@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f5f7fa">
+  <meta name="application-name" content="hk-traffic">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <title>hk-traffic 全港交通鏡頭</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+  <style>
+    :root { color-scheme: light; --safe-top: env(safe-area-inset-top, 0px); --safe-right: env(safe-area-inset-right, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px); --safe-left: env(safe-area-inset-left, 0px); --ink:#18212b; --muted:#5b6571; --panel:rgba(255,255,255,.96); --line:#d7dde5; --shadow:0 8px 28px rgba(20,32,48,.18); }
+    * { box-sizing:border-box; }
+    html, body { width:100%; height:100%; margin:0; overflow:hidden; font-family:system-ui,-apple-system,"PingFang HK","Microsoft JhengHei",sans-serif; color:var(--ink); }
+    #map { position:absolute; inset:0; background:#dce8ed; }
+    #map-fallback { position:absolute; inset:0; background:linear-gradient(145deg,#e4edf1,#d4e2e8); pointer-events:none; }
+    .topbar { position:absolute; z-index:5; top:calc(var(--safe-top) + 10px); left:calc(var(--safe-left) + 12px); right:calc(var(--safe-right) + 12px); display:flex; align-items:center; gap:9px; min-height:58px; padding:9px 12px; background:var(--panel); border:1px solid rgba(206,214,224,.9); border-radius:14px; box-shadow:var(--shadow); backdrop-filter:blur(12px); }
+    .brand { white-space:nowrap; font-weight:750; font-size:15px; letter-spacing:.01em; }
+    .filters { display:flex; align-items:center; gap:8px; flex:1; min-width:0; }
+    select, input, button { font:inherit; }
+    select, .search { height:40px; border:1px solid var(--line); border-radius:9px; background:#fff; color:var(--ink); padding:0 11px; outline:none; }
+    select:focus, .search:focus { border-color:#4385c6; box-shadow:0 0 0 3px rgba(67,133,198,.14); }
+    #region { width:124px; flex:0 0 124px; }
+    #district { width:130px; flex:0 0 130px; }
+    .search-wrap { position:relative; flex:1; min-width:110px; }
+    .search { width:100%; padding-right:35px; }
+    .clear-search { position:absolute; right:3px; top:3px; width:34px; height:34px; border:0; background:transparent; color:#697482; border-radius:7px; font-size:20px; cursor:pointer; display:none; }
+    .count { white-space:nowrap; color:#46515e; font-size:13px; font-variant-numeric:tabular-nums; }
+    .load-status { position:absolute; top:calc(100% + 7px); left:0; max-width:min(560px,calc(100vw - 24px)); padding:7px 11px; border-radius:8px; color:#324252; background:rgba(255,255,255,.94); box-shadow:0 3px 12px rgba(20,32,48,.13); font-size:13px; display:none; }
+    .load-status.error { display:block; color:#8a1e16; background:#fff1ef; border:1px solid #efb4ae; }
+    .load-status.info { display:block; }
+    .map-controls { position:absolute; z-index:4; top:calc(var(--safe-top) + 83px); left:calc(var(--safe-left) + 12px); display:flex; flex-direction:column; gap:7px; }
+    .control-stack { display:flex; flex-direction:column; overflow:hidden; border:1px solid rgba(198,207,217,.95); border-radius:10px; box-shadow:0 3px 12px rgba(20,32,48,.16); }
+    .map-btn { width:42px; height:42px; display:grid; place-items:center; border:0; border-bottom:1px solid #e3e7ec; background:#fff; color:#263442; cursor:pointer; font-size:22px; touch-action:manipulation; }
+    .map-btn:last-child { border-bottom:0; }
+    .map-btn:hover { background:#f2f6fa; }
+    .compass { position:relative; font-size:21px; line-height:1; }
+    .compass-needle { display:inline-block; color:#d9480f; transform-origin:50% 54%; transition:transform .15s linear; }
+    .pitch-readout { position:absolute; left:39px; top:10px; min-width:28px; padding:2px 4px; border-radius:5px; background:#fff; color:#43505e; font-size:10px; line-height:1.2; text-align:center; box-shadow:0 1px 5px #0002; }
+    #tilt-button { width:75px; height:38px; border:1px solid #c7d2dd; border-radius:9px; background:#fff; box-shadow:0 3px 12px rgba(20,32,48,.16); font-weight:700; font-size:13px; cursor:pointer; }
+    #tilt-button.active { color:#fff; border-color:#1769aa; background:#1769aa; }
+    #install-button { width:75px; min-height:38px; border:1px solid #c7d2dd; border-radius:9px; background:#fff; box-shadow:0 3px 12px rgba(20,32,48,.16); color:#243546; font-weight:700; font-size:12px; cursor:pointer; touch-action:manipulation; }
+    #install-button[hidden] { display:none; }
+    .legend { position:absolute; z-index:3; left:calc(var(--safe-left) + 12px); bottom:calc(var(--safe-bottom) + 22px); padding:8px 10px; border-radius:9px; background:rgba(255,255,255,.93); box-shadow:0 3px 12px rgba(20,32,48,.14); font-size:11px; color:#35414c; display:flex; gap:9px; }
+    .legend span { white-space:nowrap; }
+    .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px; vertical-align:0; }
+    .copyright { position:absolute; z-index:3; right:calc(var(--safe-right) + 10px); bottom:calc(var(--safe-bottom) + 8px); max-width:calc(100vw - 24px); color:#263442; background:rgba(255,255,255,.91); border-radius:5px; padding:4px 7px; font-size:10px; line-height:1.3; box-shadow:0 1px 5px rgba(20,32,48,.14); text-align:right; }
+    .copyright a { color:inherit; text-decoration:underline; }
+    .maplibregl-ctrl-bottom-left { left:calc(var(--safe-left) + 8px) !important; bottom:calc(var(--safe-bottom) + 52px) !important; }
+    .maplibregl-ctrl-attrib { font-size:10px !important; max-width:min(58vw,460px); }
+    .maplibregl-ctrl-logo { display:none !important; }
+    .maplibregl-canvas { outline:none; }
+    .camera-tip { padding:5px 8px; border-radius:6px; color:#fff; background:#17212b; font-size:12px; white-space:nowrap; box-shadow:0 2px 8px #0003; }
+    .maplibregl-popup.camera-popup .maplibregl-popup-content { padding:0; background:transparent; box-shadow:none; }
+    .maplibregl-popup.camera-popup .maplibregl-popup-tip { display:none; }
+    #photo-shade { position:absolute; z-index:8; inset:0; display:none; align-items:flex-start; justify-content:center; padding:calc(var(--safe-top) + var(--bar-height,78px) + 10px) calc(var(--safe-right) + 12px) calc(var(--safe-bottom) + 16px) calc(var(--safe-left) + 12px); background:rgba(15,25,35,.16); pointer-events:none; }
+    #photo-panel { pointer-events:auto; display:flex; flex-direction:column; width:min(680px,100%); max-height:100%; overflow:hidden; background:#fff; border:1px solid rgba(201,210,220,.95); border-radius:14px; box-shadow:0 15px 48px rgba(10,20,32,.32); }
+    .photo-head { display:flex; align-items:center; gap:10px; padding:11px 13px; border-bottom:1px solid #e6e9ed; }
+    #photo-title { flex:1; min-width:0; margin:0; font-size:16px; line-height:1.3; }
+    #photo-key { color:#67727f; font-size:12px; white-space:nowrap; }
+    #photo-close { width:38px; height:38px; border:0; border-radius:9px; background:#f1f3f5; font-size:22px; cursor:pointer; }
+    .photo-stage { position:relative; min-height:72px; flex:1; min-height:0; overflow:auto; display:flex; justify-content:center; align-items:center; background:#10161c; }
+    #camera-image { display:block; max-width:100%; max-height:100%; width:auto; height:auto; object-fit:contain; }
+    #photo-message { position:absolute; inset:0; display:none; align-items:center; justify-content:center; padding:20px; color:white; background:rgba(12,19,27,.78); text-align:center; }
+    .photo-actions { display:flex; gap:8px; flex-wrap:wrap; padding:10px 12px; border-top:1px solid #e6e9ed; }
+    .action-btn { min-height:42px; padding:0 12px; border:1px solid #cbd3dc; border-radius:9px; background:#fff; color:#253241; font-weight:600; font-size:13px; cursor:pointer; touch-action:manipulation; }
+    .action-btn.primary { color:#fff; border-color:#1769aa; background:#1769aa; }
+    .action-btn:disabled { opacity:.42; cursor:not-allowed; }
+    @media (max-width:760px) {
+      .topbar { top:calc(var(--safe-top) + 7px); left:calc(var(--safe-left) + 8px); right:calc(var(--safe-right) + 8px); min-height:unset; padding:8px; display:block; border-radius:13px; }
+      .brand { display:none; }
+      .filters { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; gap:7px; }
+      #region,#district { width:100%; min-width:0; height:38px; padding:0 8px; font-size:13px; }
+      .search-wrap { grid-column:1 / 3; grid-row:2; min-width:0; }
+      .search { height:38px; font-size:13px; }
+      .count { grid-column:3; grid-row:2; font-size:11px; text-align:right; }
+      .load-status { top:calc(100% + 6px); }
+      .map-controls { top:calc(var(--safe-top) + 111px); left:calc(var(--safe-left) + 8px); gap:6px; }
+      .map-btn { width:40px; height:40px; }
+      #tilt-button { width:70px; height:38px; }
+      .legend { bottom:calc(var(--safe-bottom) + 48px); left:calc(var(--safe-left) + 8px); gap:6px; font-size:10px; padding:7px; }
+      .copyright { bottom:calc(var(--safe-bottom) + 7px); right:calc(var(--safe-right) + 7px); max-width:65vw; font-size:9px; }
+      .maplibregl-ctrl-bottom-left { bottom:calc(var(--safe-bottom) + 70px) !important; }
+      .maplibregl-ctrl-attrib { max-width:48vw; font-size:9px !important; }
+      #photo-shade { padding-top:calc(var(--safe-top) + var(--bar-height,104px) + 8px); padding-left:calc(var(--safe-left) + 8px); padding-right:calc(var(--safe-right) + 8px); }
+      .photo-head { padding:8px 9px; }
+      #photo-title { font-size:14px; }
+      .photo-actions { gap:6px; padding:8px; }
+      .action-btn { flex:1 1 auto; min-height:44px; padding:0 8px; font-size:12px; }
+    }
+    @media (max-height:560px) { .legend { display:none; } .photo-actions { padding:6px; } .action-btn { min-height:38px; } }
+  </style>
+</head>
+<body>
+  <div id="map-fallback"></div><div id="map" aria-label="香港交通鏡頭地圖"></div>
+  <header class="topbar" id="topbar">
+    <div class="brand">hk-traffic</div>
+    <div class="filters">
+      <select id="region" aria-label="選擇地區"><option value="">全部地區</option></select>
+      <select id="district" aria-label="選擇分區"><option value="">全部分區</option></select>
+      <label class="search-wrap"><input id="search" class="search" type="search" autocomplete="off" placeholder="搜尋地點／編號，例如 隧道、東區走廊、H210F" aria-label="搜尋地點或鏡頭編號"><button class="clear-search" id="clear-search" aria-label="清除搜尋">×</button></label>
+      <div class="count" id="count">載入中…</div>
+    </div>
+    <div class="load-status info" id="status">正在載入全港交通鏡頭與地圖…</div>
+  </header>
+  <div class="map-controls" aria-label="地圖控制">
+    <div class="control-stack">
+      <button class="map-btn" id="zoom-in" aria-label="放大地圖">＋</button>
+      <button class="map-btn" id="zoom-out" aria-label="縮小地圖">−</button>
+      <button class="map-btn" id="compass" aria-label="指南針，按一下重設北向"><span class="compass-needle" id="compass-needle">▲</span><span class="pitch-readout" id="pitch-readout">0°</span></button>
+    </div>
+    <button id="tilt-button" aria-label="切換平面或 2.5D">2.5D</button>
+    <button id="install-button" aria-label="安裝 hk-traffic">安裝 App</button>
+  </div>
+  <div class="legend" aria-label="鏡頭地區圖例"><span><i class="dot" style="background:#d9480f"></i>香港島</span><span><i class="dot" style="background:#1c7ed6"></i>九龍</span><span><i class="dot" style="background:#2b8a3e"></i>新界</span></div>
+  <div class="copyright">地圖資料 © <a href="https://api.portal.hkmapservice.gov.hk/disclaimer" target="_blank" rel="noopener">地政總署</a> · 鏡頭影像 © 運輸署 / DATA.GOV.HK</div>
+
+  <div id="photo-shade" role="dialog" aria-modal="true" aria-labelledby="photo-title">
+    <section id="photo-panel">
+      <div class="photo-head"><h2 id="photo-title">交通鏡頭</h2><span id="photo-key"></span><button id="photo-close" aria-label="關閉相片視窗">×</button></div>
+      <div class="photo-stage" id="photo-stage"><img id="camera-image" alt="交通鏡頭最新相片"><div id="photo-message"></div></div>
+      <div class="photo-actions">
+        <button class="action-btn" id="size-toggle">放大 ×2</button>
+        <button class="action-btn primary" id="enhance-toggle">原圖</button>
+        <button class="action-btn" id="reload-photo">重新載入</button>
+      </div>
+    </section>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+  <script type="module">
+    const CAMERA_URL = 'https://static.data.gov.hk/td/traffic-snapshot-images/code/Traffic_Camera_Locations_Tc.xml';
+    const BASE_URL = 'https://mapapi.geodata.gov.hk/gs/api/v1.0.0/vt/basemap/WGS84';
+    const LABEL_URL = 'https://mapapi.geodata.gov.hk/gs/api/v1.0.0/vt/label/hk/tc/WGS84';
+    const PLANET_URL = 'https://tiles.openfreemap.org/planet';
+    const COLORS = {'香港島':'#d9480f','九龍':'#1c7ed6','新界':'#2b8a3e'};
+    const $ = id => document.getElementById(id);
+    const status = $('status');
+    let allCameras = [], map, mapReady = false, styleFallback = false, hoverPopup = null, selectedCamera = null, globeProjection = false;
+    let enhancedCanvas = null, photoGeneration = 0;
+    let installPromptEvent = null;
+    const rememberedTilt = localStorage.getItem('hktraffic-tilt') === 'true';
+    let isEnhanced = localStorage.getItem('hktraffic-enhance') !== 'false';
+    let isDouble = localStorage.getItem('hktraffic-double') === 'true';
+
+    function showStatus(message, type='info') { status.textContent = message; status.className = `load-status ${type}`; }
+    function hideStatus() { status.textContent=''; status.className='load-status'; }
+    function escapeRegExp(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+    function normaliseCamera(item) {
+      const key = (item.querySelector('key')?.textContent || '').trim();
+      const description = (item.querySelector('description')?.textContent || '').trim();
+      const name = description.replace(new RegExp(`\\s*\\[${escapeRegExp(key)}\\]\\s*$`), '').trim() || description;
+      return { key, region:(item.querySelector('region')?.textContent||'').trim(), district:(item.querySelector('district')?.textContent||'').trim(), name,
+        longitude:Number(item.querySelector('longitude')?.textContent), latitude:Number(item.querySelector('latitude')?.textContent),
+        url:(item.querySelector('url')?.textContent||`https://tdcctv.data.one.gov.hk/${encodeURIComponent(key)}.JPG`).trim() };
+    }
+    function cameraFeature(camera) { return {type:'Feature', id:camera.key, geometry:{type:'Point',coordinates:[camera.longitude,camera.latitude]},properties:{key:camera.key,name:camera.name,region:camera.region,district:camera.district,color:COLORS[camera.region]||'#52616f'}}; }
+    function visibleCameras() {
+      const region=$('region').value, district=$('district').value, query=$('search').value.trim().toLocaleLowerCase();
+      return allCameras.filter(c => (!region||c.region===region) && (!district||c.district===district) && (!query||c.name.toLocaleLowerCase().includes(query)||c.key.toLocaleLowerCase().includes(query)));
+    }
+    function fillRegions() {
+      const regions=[...new Set(allCameras.map(c=>c.region))];
+      $('region').innerHTML='<option value="">全部地區</option>'+regions.map(v=>`<option value="${escapeHTML(v)}">${escapeHTML(v)}</option>`).join('');
+      fillDistricts();
+    }
+    function fillDistricts() {
+      const region=$('region').value;
+      const districts=[...new Set(allCameras.filter(c=>!region||c.region===region).map(c=>c.district))].sort((a,b)=>a.localeCompare(b,'zh-Hant'));
+      const select=$('district'); const previous=select.value;
+      select.innerHTML='<option value="">全部分區</option>'+districts.map(v=>`<option value="${escapeHTML(v)}">${escapeHTML(v)}</option>`).join('');
+      if (districts.includes(previous)) select.value=previous;
+    }
+    function escapeHTML(s) { return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function refreshFilter(fit=true) {
+      $('clear-search').style.display=$('search').value?'block':'none';
+      const visible=visibleCameras(); $('count').textContent=`${visible.length.toLocaleString('zh-Hant')} / ${allCameras.length.toLocaleString('zh-Hant')} 個鏡頭`;
+      if (mapReady) {
+        map.getSource('cameras')?.setData({type:'FeatureCollection',features:visible.map(cameraFeature)});
+        if (fit && visible.length) {
+          const topbarHeight=$('topbar').getBoundingClientRect().height;
+          if (visible.length===1) map.flyTo({center:[visible[0].longitude,visible[0].latitude],zoom:15,padding:{top:topbarHeight+28,left:30,right:30,bottom:35},duration:850});
+          else {
+            let west=Infinity,south=Infinity,east=-Infinity,north=-Infinity;
+            visible.forEach(c=>{west=Math.min(west,c.longitude);east=Math.max(east,c.longitude);south=Math.min(south,c.latitude);north=Math.max(north,c.latitude);});
+            if (west===east&&south===north) map.flyTo({center:[west,south],zoom:13,padding:{top:topbarHeight+28,bottom:35,left:35,right:35},duration:850});
+            else map.fitBounds([[west,south],[east,north]],{padding:{top:topbarHeight+28,bottom:45,left:42,right:42},maxZoom:15,duration:850});
+          }
+        }
+      }
+    }
+
+    async function getJSON(url) { const response=await fetch(url,{cache:'no-cache'}); if(!response.ok) throw new Error(`${response.status} ${response.statusText}`); return response.json(); }
+    function rewriteServiceStyle(style, serviceUrl, sourceName, prefix='') {
+      const copy=structuredClone(style);
+      const sources={};
+      for (const [oldName,source] of Object.entries(copy.sources||{})) {
+        const {url,...rest}=source;
+        sources[sourceName+(oldName==='esri'?'':`/${oldName}`)]={...rest,tiles:[`${serviceUrl}/tile/{z}/{y}/{x}.pbf`]};
+      }
+      for (const layer of copy.layers||[]) {
+        if (layer.source) layer.source=sourceName+(layer.source==='esri'?'':`/${layer.source}`);
+        layer.id=prefix+layer.id;
+      }
+      return {sources,layers:copy.layers||[]};
+    }
+    async function makeMapStyle() {
+      const [base,label,planet]=await Promise.all([getJSON(`${BASE_URL}/resources/styles/root.json`),getJSON(`${LABEL_URL}/resources/styles/root.json`),getJSON(PLANET_URL)]);
+      const b=rewriteServiceStyle(base,BASE_URL,'hk-base');
+      const l=rewriteServiceStyle(label,LABEL_URL,'hk-label','label/');
+      const sources={...b.sources,...l.sources,openfreemap:{type:'vector',tiles:planet.tiles,minzoom:planet.minzoom??0,maxzoom:planet.maxzoom??14,attribution:planet.attribution||''}};
+      return {style:{version:8,name:'香港地政總署地圖',sprite:base.sprite,glyphs:`${LABEL_URL}/resources/fonts/{fontstack}/{range}.pbf`,sources,layers:[...b.layers,...l.layers]},firstLabelId:l.layers[0]?.id||null,planet};
+    }
+    function fallbackStyle() { styleFallback=true; return {style:{version:8,sources:{},layers:[{id:'background',type:'background',paint:{'background-color':'#dce8ed'}}]},firstLabelId:null,planet:null}; }
+    function addAppLayers(firstLabelId,planet) {
+      if (!map.getSource('cameras')) map.addSource('cameras',{type:'geojson',data:{type:'FeatureCollection',features:allCameras.map(cameraFeature)},cluster:false});
+      if (planet && !map.getLayer('camera-buildings')) {
+        map.addLayer({id:'camera-buildings',type:'fill-extrusion',source:'openfreemap','source-layer':'building',minzoom:14,filter:['!=',['get','hide_3d'],true],layout:{visibility:'none'},paint:{
+          'fill-extrusion-color':['interpolate',['linear'],['coalesce',['get','render_height'],0],0,'#f4f1ea',120,'#e2e7ee',300,'#cfd8e6'],
+          'fill-extrusion-height':['coalesce',['get','render_height'],0], 'fill-extrusion-base':['coalesce',['get','render_min_height'],0],
+          'fill-extrusion-opacity':['interpolate',['linear'],['zoom'],14,0,14.5,0.92],'fill-extrusion-vertical-gradient':true
+        }},firstLabelId||undefined);
+      }
+      map.addLayer({id:'camera-hit-area',type:'circle',source:'cameras',paint:{'circle-radius':14,'circle-color':['get','color'],'circle-opacity':0.01,'circle-stroke-width':0}});
+      map.addLayer({id:'camera-points',type:'circle',source:'cameras',paint:{'circle-radius':5,'circle-color':['get','color'],'circle-stroke-color':'#fff','circle-stroke-width':1.25,'circle-opacity':0.98}});
+      map.on('mouseenter','camera-hit-area',e=>{ map.getCanvas().style.cursor='pointer'; if(!e.features?.length)return; const f=e.features[0]; if(hoverPopup)hoverPopup.remove(); hoverPopup=new maplibregl.Popup({closeButton:false,closeOnClick:false,offset:10,className:'camera-popup'}).setLngLat(f.geometry.coordinates).setDOMContent(makeTip(f.properties.name)).addTo(map); });
+      map.on('mouseleave','camera-hit-area',()=>{map.getCanvas().style.cursor='';if(hoverPopup){hoverPopup.remove();hoverPopup=null;}});
+      map.on('click','camera-hit-area',e=>{if(!e.features?.length)return;const f=e.features[0];const camera=allCameras.find(c=>c.key===f.properties.key);if(hoverPopup){hoverPopup.remove();hoverPopup=null;}if(camera)openPhoto(camera);});
+      const sync3d=()=>{const pitched=map.getPitch()>5; if(pitched!==globeProjection){try{map.setProjection({type:pitched?'globe':'mercator'});globeProjection=pitched;}catch(err){console.warn('無法切換地圖投影',err);}} if(map.getLayer('camera-buildings'))map.setLayoutProperty('camera-buildings','visibility',pitched?'visible':'none'); $('tilt-button').textContent=pitched?'2D':'2.5D';$('tilt-button').classList.toggle('active',pitched); $('pitch-readout').textContent=`${Math.round(map.getPitch())}°`; $('compass-needle').style.transform=`rotate(${-map.getBearing()}deg)`; localStorage.setItem('hktraffic-tilt',pitched?'true':'false');};
+      map.on('pitch',sync3d);map.on('rotate',sync3d); sync3d();
+      try { map.setLight({anchor:'viewport',color:'#fff4df',intensity:0.42,position:[1.15,210,30]}); } catch {}
+      try { map.setSky({'sky-color':'#7fb8e6','horizon-color':'#dcecf7','fog-color':'#dcecf7','sky-horizon-blend':0.35,'horizon-fog-blend':0.1}); } catch {}
+    }
+    function makeTip(name) { const el=document.createElement('div');el.className='camera-tip';el.textContent=name;return el; }
+
+    function updatePhotoSizeButton() {$('size-toggle').textContent=isDouble?'原尺寸':'放大 ×2';localStorage.setItem('hktraffic-double',String(isDouble));}
+    function updateEnhanceButton() {$('enhance-toggle').textContent=isEnhanced?'原圖':'自動增強';$('enhance-toggle').classList.toggle('primary',isEnhanced);localStorage.setItem('hktraffic-enhance',String(isEnhanced));renderPhoto();}
+    function openPhoto(camera) {
+      selectedCamera=camera; $('photo-title').textContent=camera.name; $('photo-key').textContent=camera.key;
+      $('photo-shade').style.display='flex'; document.documentElement.style.setProperty('--bar-height',`${$('topbar').getBoundingClientRect().height}px`);
+      if(mapReady){const coverBottom=$('photo-panel').getBoundingClientRect().bottom+16;const topPadding=Math.min(coverBottom,Math.max(0,window.innerHeight-120));map.easeTo({center:[camera.longitude,camera.latitude],padding:{top:topPadding,right:24,bottom:24,left:24},duration:500});}
+      if(hoverPopup){hoverPopup.remove();hoverPopup=null;} loadPhoto();
+      $('photo-close').focus({preventScroll:true});
+    }
+    function closePhoto() {$('photo-shade').style.display='none';selectedCamera=null;if(mapReady)map.easeTo({padding:{top:0,right:0,bottom:0,left:0},duration:450});}
+    function loadPhoto() {
+      if(!selectedCamera)return; const generation=++photoGeneration, image=$('camera-image'), msg=$('photo-message');
+      enhancedCanvas=null; image.removeAttribute('src');msg.style.display='flex';msg.textContent='正在載入最新相片…';$('enhance-toggle').disabled=true;
+      const fresh=new Image();fresh.crossOrigin='anonymous';fresh.onload=()=>{if(generation!==photoGeneration)return;image.src=fresh.src;msg.style.display='none';$('enhance-toggle').disabled=false;
+        try { enhancedCanvas=enhanceImage(fresh); } catch(err) { console.warn('相片增強處理失敗，改用原圖。',err); enhancedCanvas=null;$('enhance-toggle').style.display='none'; }
+        if(enhancedCanvas)$('enhance-toggle').style.display='';renderPhoto();};
+      fresh.onerror=()=>{if(generation!==photoGeneration)return;msg.style.display='flex';msg.textContent='相片載入失敗，請檢查網絡連線後重新載入。';$('enhance-toggle').disabled=true;};
+      fresh.src=`${selectedCamera.url}${selectedCamera.url.includes('?')?'&':'?'}t=${Date.now()}`;
+    }
+    function renderPhoto() {
+      const image=$('camera-image'); image.style.width=isDouble?'min(640px, calc(100vw - 40px))':'auto'; image.style.height='auto';
+      if(isEnhanced&&enhancedCanvas){image.src=enhancedCanvas.toDataURL('image/jpeg',0.94); image.style.imageRendering='auto';}
+      else if(selectedCamera && !image.src.startsWith('data:')) image.src=`${selectedCamera.url}${selectedCamera.url.includes('?')?'&':'?'}t=${Date.now()}`;
+      else if(selectedCamera && image.src.startsWith('data:')) {const original=new Image();original.crossOrigin='anonymous';original.onload=()=>{if(selectedCamera)image.src=original.src;};original.src=`${selectedCamera.url}${selectedCamera.url.includes('?')?'&':'?'}t=${Date.now()}`;}
+    }
+
+    function clamp(v,min=0,max=255){return Math.max(min,Math.min(max,v));}
+    function enhanceImage(image) {
+      const w=image.naturalWidth||320,h=image.naturalHeight||240, canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
+      const ctx=canvas.getContext('2d',{willReadFrequently:true});if(!ctx)throw Error('Canvas 不可用');ctx.drawImage(image,0,0,w,h);
+      const im=ctx.getImageData(0,0,w,h),d=im.data, original=new Uint8ClampedArray(d), lum=(i,a=d)=>0.2126*a[i]+0.7152*a[i+1]+0.0722*a[i+2];
+      // 輕柔去方格：僅修正 8 像素邊界附近、兩側亮度連續而且差距很小的接縫。
+      const deblocked=new Uint8ClampedArray(d);
+      for(let x=8;x<w;x+=8)for(let y=0;y<h;y++){
+        const li=(y*w+x-1)*4,ri=(y*w+x)*4, lp=(y*w+Math.max(0,x-3))*4,rp=(y*w+Math.min(w-1,x+2))*4;
+        const diff=lum(ri,original)-lum(li,original);if(Math.abs(diff)>=12||Math.abs(lum(li,original)-lum(lp,original))>10||Math.abs(lum(rp,original)-lum(ri,original))>10)continue;
+        for(let k=-3;k<=3;k++){const xx=x+k;if(xx<0||xx>=w)continue;const strength=(4-Math.abs(k))/4,idx=(y*w+xx)*4;for(let c=0;c<3;c++)deblocked[idx+c]=clamp(original[idx+c]+(k<0?1:-1)*diff*0.45*strength);}
+      }
+      for(let i=0;i<d.length;i++)d[i]=deblocked[i];
+      // 去霧：排除底部時間字樣及近黑邊，採用 0.5% 與 99.8% 亮度分位數，一半強度、最多 2.2 倍。
+      const hist=new Uint32Array(256);let total=0;
+      for(let y=0;y<Math.floor(h*.88);y++)for(let x=0;x<w;x++){const i=(y*w+x)*4,Y=lum(i);if(Y<5)continue;hist[Math.round(Y)]++;total++;}
+      const percentile=p=>{const target=total*p;let n=0;for(let i=0;i<256;i++){n+=hist[i];if(n>=target)return i;}return 255;};
+      const lo=percentile(.005),hi=percentile(.998);const gain=Math.min(2.2,255/Math.max(1,hi-lo));
+      for(let i=0;i<d.length;i+=4){const y=lum(i);const stretched=clamp((y-lo)*gain);const target=y+(stretched-y)*.5;const ratio=y>1?target/y:1;d[i]=clamp(d[i]*ratio);d[i+1]=clamp(d[i+1]*ratio);d[i+2]=clamp(d[i+2]*ratio);}
+      // 8×6 區域亮度 CLAHE：clip limit 2，區間雙線性插值，融合強度約三分之一。
+      const cols=8,rows=6,tw=w/cols,th=h/rows,luts=[];
+      for(let gy=0;gy<rows;gy++)for(let gx=0;gx<cols;gx++){
+        const hist2=new Uint32Array(256);let count=0,x0=Math.floor(gx*tw),x1=Math.floor((gx+1)*tw),y0=Math.floor(gy*th),y1=Math.floor((gy+1)*th);
+        for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){hist2[Math.round(lum((y*w+x)*4))]++;count++;}
+        const limit=Math.max(1,Math.floor(2*count/256));let excess=0;for(let b=0;b<256;b++)if(hist2[b]>limit){excess+=hist2[b]-limit;hist2[b]=limit;}
+        const each=Math.floor(excess/256),extra=excess%256;for(let b=0;b<256;b++)hist2[b]+=each+(b<extra?1:0);
+        const lut=new Float32Array(256);let cumulative=0;for(let b=0;b<256;b++){cumulative+=hist2[b];lut[b]=count?cumulative*255/count:b;}luts.push(lut);
+      }
+      for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+        const gx=Math.max(0,Math.min(cols-1,(x+.5)/tw-.5)),gy=Math.max(0,Math.min(rows-1,(y+.5)/th-.5)),x0=Math.floor(gx),y0=Math.floor(gy),x1=Math.min(cols-1,x0+1),y1=Math.min(rows-1,y0+1),fx=gx-x0,fy=gy-y0,i=(y*w+x)*4,Y=lum(i),b=Math.round(Y);
+        const e=luts[y0*cols+x0][b]*(1-fx)*(1-fy)+luts[y0*cols+x1][b]*fx*(1-fy)+luts[y1*cols+x0][b]*(1-fx)*fy+luts[y1*cols+x1][b]*fx*fy;
+        const target=Y+(e-Y)/3,ratio=Y>1?target/Y:1;for(let c=0;c<3;c++)d[i+c]=clamp(d[i+c]*ratio);
+      }
+      // 15% 輕微反遮罩銳化與 10% 飽和度提升。
+      const before=new Uint8ClampedArray(d);
+      for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const i=(y*w+x)*4;for(let c=0;c<3;c++){const avg=(before[i-4+c]+before[i+4+c]+before[i-w*4+c]+before[i+w*4+c])/4;d[i+c]=clamp(before[i+c]+(before[i+c]-avg)*.15);}}
+      for(let i=0;i<d.length;i+=4){const Y=lum(i);for(let c=0;c<3;c++)d[i+c]=clamp(Y+(d[i+c]-Y)*1.10);}
+      ctx.putImageData(im,0,0);return canvas;
+    }
+
+    function setMode(pitched) { if(!map)return;try{map.setProjection({type:pitched?'globe':'mercator'});globeProjection=pitched;}catch(err){console.warn('無法切換地圖投影',err);}map.easeTo({pitch:pitched?60:0,bearing:pitched?map.getBearing():0,duration:850}); }
+    $('zoom-in').addEventListener('click',()=>map?.zoomIn({duration:250})); $('zoom-out').addEventListener('click',()=>map?.zoomOut({duration:250}));
+    $('compass').addEventListener('click',()=>map?.easeTo({bearing:0,pitch:0,duration:700})); $('tilt-button').addEventListener('click',()=>setMode(map.getPitch()<=5));
+    $('region').addEventListener('change',()=>{fillDistricts();refreshFilter();}); $('district').addEventListener('change',()=>refreshFilter()); $('search').addEventListener('input',()=>refreshFilter()); $('clear-search').addEventListener('click',()=>{$('search').value='';refreshFilter();$('search').focus();});
+    $('photo-close').addEventListener('click',closePhoto); $('photo-shade').addEventListener('click',e=>{if(e.target===$('photo-shade'))closePhoto();});
+    document.addEventListener('keydown',e=>{if(e.key==='Escape'&&selectedCamera)closePhoto();});
+    $('size-toggle').addEventListener('click',()=>{isDouble=!isDouble;updatePhotoSizeButton();renderPhoto();});
+    $('enhance-toggle').addEventListener('click',()=>{isEnhanced=!isEnhanced;updateEnhanceButton();}); $('reload-photo').addEventListener('click',loadPhoto);
+    updatePhotoSizeButton(); $('enhance-toggle').textContent=isEnhanced?'原圖':'自動增強';$('enhance-toggle').classList.toggle('primary',isEnhanced);
+
+    const installButton=$('install-button');
+    const alreadyInstalled=window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+    if(alreadyInstalled)installButton.hidden=true;
+    window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();installPromptEvent=event;installButton.textContent='安裝 App';});
+    window.addEventListener('appinstalled',()=>{installPromptEvent=null;installButton.hidden=true;});
+    installButton.addEventListener('click',async()=>{
+      if(installPromptEvent){const promptEvent=installPromptEvent;installPromptEvent=null;await promptEvent.prompt();const choice=await promptEvent.userChoice;if(choice.outcome==='accepted')installButton.hidden=true;return;}
+      const local=location.protocol==='file:'||!window.isSecureContext;
+      showStatus(local?'要安裝及使用離線功能，請先透過 HTTPS 網址或 localhost 開啟此 App。':'如瀏覽器未顯示安裝提示，請從瀏覽器選單選擇「安裝 hk-traffic」或「加入主畫面」。','info');
+    });
+
+    if('serviceWorker' in navigator&&window.isSecureContext){
+      navigator.serviceWorker.register('./service-worker.js',{scope:'./'}).then(registration=>console.info('hk-traffic PWA 已啟用',registration.scope)).catch(error=>console.warn('hk-traffic 離線快取啟用失敗',error));
+    }
+
+    async function start() {
+      const dataPromise=fetch(CAMERA_URL,{cache:'no-cache'}).then(r=>{if(!r.ok)throw Error(`鏡頭清單讀取失敗（HTTP ${r.status}）`);return r.text();}).then(xml=>{
+        const doc=new DOMParser().parseFromString(xml,'application/xml');if(doc.querySelector('parsererror'))throw Error('鏡頭清單 XML 格式無法解析。');
+        const items=[...doc.querySelectorAll('image')].map(normaliseCamera).filter(c=>c.key&&Number.isFinite(c.longitude)&&Number.isFinite(c.latitude));if(!items.length)throw Error('鏡頭清單沒有可用資料。');allCameras=items;fillRegions();refreshFilter(false);return true;
+      });
+      let mapConfig;try{mapConfig=await makeMapStyle();}catch(err){console.error('地圖樣式載入失敗，使用純色背景。',err);mapConfig=fallbackStyle();showStatus(`地圖樣式載入失敗，已切換純色背景；鏡頭點仍可使用。（${err.message}）`,'error');}
+      map=new maplibregl.Map({container:'map',style:mapConfig.style,center:[114.12,22.36],zoom:10,maxZoom:19,maxPitch:70,localIdeographFontFamily:'"Noto Sans TC", "PingFang HK", "Microsoft JhengHei", sans-serif',attributionControl:false,dragRotate:true,touchPitch:true,touchZoomRotate:true,renderWorldCopies:false});
+      map.addControl(new maplibregl.AttributionControl({compact:true}),'bottom-left');
+      map.once('load',()=>{mapReady=true;$('map-fallback').style.display='none';addAppLayers(mapConfig.firstLabelId,mapConfig.planet);if(rememberedTilt)map.easeTo({pitch:60,duration:0});else map.setPitch(0);refreshFilter(false);if(!styleFallback)hideStatus();});
+      map.on('error',e=>{console.warn('地圖資源錯誤',e.error||e);});
+      dataPromise.then(()=>{if(styleFallback)showStatus(`地圖樣式無法載入；已載入 ${allCameras.length.toLocaleString()} 個鏡頭，鏡頭點仍可使用。`,'error');else if(mapReady)hideStatus();else showStatus(`已載入 ${allCameras.length.toLocaleString()} 個鏡頭，正在載入地圖…`,'info');}).catch(err=>{console.error(err);$('count').textContent='鏡頭資料讀取失敗';showStatus(`${err.message}。請檢查網絡連線後重新載入頁面。`,'error');});
+    }
+    start().catch(err=>{console.error(err);showStatus(`網頁初始化失敗：${err.message}`,'error');});
+  </script>
+</body>
+</html>

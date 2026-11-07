@@ -25,6 +25,8 @@ jobs:
         uses: actions/checkout@v4
       - name: 設定 GitHub Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - name: 打包 PWA 網站
         uses: actions/upload-pages-artifact@v3
         with:

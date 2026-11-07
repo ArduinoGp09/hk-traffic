@@ -27,15 +27,15 @@ jobs:
         uses: actions/configure-pages@v5
         with:
           enablement: true
+      - name: 準備部署檔案
+        run: |
+          mkdir -p site/icons
+          cp index.html manifest.webmanifest service-worker.js .nojekyll site/
+          cp icons/icon-192.png icons/icon-512.png site/icons/
       - name: 打包 PWA 網站
         uses: actions/upload-pages-artifact@v3
         with:
-          path: |
-            index.html
-            manifest.webmanifest
-            service-worker.js
-            .nojekyll
-            icons/
+          path: site/
       - name: 發布網站
         id: deployment
         uses: actions/deploy-pages@v4
